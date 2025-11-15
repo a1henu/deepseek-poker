@@ -290,11 +290,11 @@ button:not(:disabled):hover {
 }
 
 .poker-card .rank {
-  font-size: 1.4rem;
+  font-size: clamp(1.4rem, 3.5vw, 2.6rem);
 }
 
 .poker-card .suit {
-  font-size: 0.85rem;
+  font-size: clamp(1.3rem, 3vw, 2.4rem);
 }
 
 .event-text {
@@ -524,16 +524,6 @@ button:not(:disabled):hover {
 
   .board-panel {
     padding: 1rem;
-  }
-
-  .players-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-    gap: 0.75rem;
-  }
-
-  .player-tile {
-    flex: 1 1 auto;
   }
 
   .poker-card {

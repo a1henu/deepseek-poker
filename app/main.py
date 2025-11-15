@@ -103,3 +103,15 @@ async def player_action(room_id: str, request: ActionRequest) -> dict:
 async def room_state(room_id: str, player_id: str | None = None, player_secret: str | None = None) -> dict:
     state = await room_manager.fetch_state(room_id, player_id, player_secret)
     return {"room_id": room_id, "state": state}
+
+
+@app.post("/rooms/{room_id}/reset")
+async def reset_room(room_id: str, request: StartHandRequest) -> dict:
+    state = await room_manager.reset_room(room_id, request.player_id, request.player_secret)
+    return {"room_id": room_id, "state": state}
+
+
+@app.delete("/rooms/{room_id}")
+async def disband_room(room_id: str, request: StartHandRequest) -> dict:
+    await room_manager.disband_room(room_id, request.player_id, request.player_secret)
+    return {"room_id": room_id, "status": "disbanded"}

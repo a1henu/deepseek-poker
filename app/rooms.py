@@ -44,6 +44,7 @@ class Room:
         self.game: PokerHand | None = None
         self.dealer_index: int | None = None
         self.state_version: int = 1
+        self.first_hand_started = False
 
     def _human_slots(self) -> int:
         return self.total_seats - self.ai_requested
@@ -108,6 +109,10 @@ class Room:
         if self.game and not self.game.hand_over:
             raise HTTPException(status_code=400, detail="当前牌局尚未结束，不能重新开局")
         self._spawn_ai_players()
+        if not self.first_hand_started:
+            random.shuffle(self.players)
+            for idx, player in enumerate(self.players):
+                player.seat_index = idx
         if len([p for p in self.players if p.stack > 0]) < 2:
             raise HTTPException(status_code=400, detail="Need at least two players with chips")
         dealer = self._next_dealer_position()
@@ -120,6 +125,25 @@ class Room:
         )
         self.game.start()
         self.state_version += 1
+        self.first_hand_started = True
+
+    def reset_room(self, requesting_player: Player) -> dict:
+        if requesting_player.id != self.host_player_id:
+            raise HTTPException(status_code=403, detail="Only the host can reset the room")
+        self.game = None
+        self.dealer_index = None
+        self.state_version += 1
+        self.first_hand_started = False
+        for player in self.players:
+            player.reset_for_new_hand()
+            player.stack = self.starting_stack
+            player.bet = 0
+            player.folded = False
+            player.busted = False
+        random.shuffle(self.players)
+        for idx, player in enumerate(self.players):
+            player.seat_index = idx
+        return self.state_for(requesting_player)
 
     async def handle_action(self, player: Player, action: str, amount: int) -> None:
         if not self.game:
@@ -297,6 +321,21 @@ class RoomManager:
         await room.auto_play_ai()
         async with room.lock:
             return room.state_for(player)
+
+    async def reset_room(self, room_id: str, player_id: str, secret: str) -> dict:
+        room = self.get_room(room_id)
+        async with room.lock:
+            player = room.verify_secret(player_id, secret)
+            state = room.reset_room(player)
+        return state
+
+    async def disband_room(self, room_id: str, player_id: str, secret: str) -> None:
+        room = self.get_room(room_id)
+        async with self.lock:
+            host = room.verify_secret(player_id, secret)
+            if host.id != room.host_player_id:
+                raise HTTPException(status_code=403, detail="Only the host can disband the room")
+            self.rooms.pop(room_id, None)
 
     async def fetch_state(self, room_id: str, player_id: str | None, secret: str | None) -> dict:
         room = self.get_room(room_id)

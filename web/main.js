@@ -10,6 +10,8 @@ const dom = {
   sessionInfo: document.getElementById("session-info"),
   startHandBtn: document.getElementById("start-hand-btn"),
   refreshStateBtn: document.getElementById("refresh-state-btn"),
+  disbandBtn: document.getElementById("disband-room-btn"),
+  restartBtn: document.getElementById("restart-room-btn"),
   leaveBtn: document.getElementById("leave-room-btn"),
   createForm: document.getElementById("create-room-form"),
   joinForm: document.getElementById("join-room-form"),
@@ -38,6 +40,7 @@ function init() {
   dom.refreshLobbyBtn.addEventListener("click", refreshLobby);
   dom.startHandBtn.addEventListener("click", startHand);
   dom.refreshStateBtn.addEventListener("click", refreshState);
+  dom.disbandBtn.addEventListener("click", disbandRoom);
   dom.leaveBtn.addEventListener("click", () => {
     clearSession();
     stopPolling();
@@ -255,6 +258,32 @@ function render() {
   dom.startHandBtn.disabled = !(state.session && state.session.isHost);
   dom.refreshStateBtn.disabled = !state.session;
   dom.leaveBtn.disabled = !state.session;
+  dom.disbandBtn.disabled = !(state.session && state.session.isHost);
+}
+
+async function disbandRoom() {
+  if (!state.session || !state.session.isHost) return;
+  if (!confirm("解散房间后所有玩家都将断开，确认继续？")) {
+    return;
+  }
+  try {
+    setStatus("正在解散房间...", "info");
+    const res = await fetch(`/rooms/${state.session.roomId}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        player_id: state.session.playerId,
+        player_secret: state.session.secret,
+      }),
+    });
+    if (!res.ok) throw new Error((await res.json()).detail || "解散失败");
+    clearSession();
+    setStatus("房间已解散。", "success");
+    render();
+  } catch (err) {
+    console.error(err);
+    setStatus(err.message || "解散失败", "error");
+  }
 }
 
 function renderSessionInfo() {
@@ -300,7 +329,7 @@ function renderState() {
   dom.currentPlayer.textContent = turnPlayer ? turnPlayer.name : st.current_player_id || "等待中";
   renderBoard(st.community_cards || []);
   renderHeroPanel(st);
-  renderPlayers(st.players || [], st.current_player_id);
+  renderPlayers(st);
   renderActions(st.actions || []);
 }
 
@@ -337,19 +366,26 @@ function renderBoard(cards) {
   dom.community.innerHTML = renderCardList(cards, { padTo: 5 });
 }
 
-function renderPlayers(players, currentId) {
-  if (!dom.playersGrid) return;
+function renderPlayers(st) {
+  if (!dom.playersGrid || !st) return;
+  const players = st.players || [];
   if (!players.length) {
     dom.playersGrid.innerHTML = '<p class="muted-text">等待玩家加入...</p>';
     return;
   }
+  const showAll = st.phase === "showdown";
+  const currentId = st.current_player_id;
   const sorted = orderPlayers(players);
   dom.playersGrid.innerHTML = "";
   sorted.forEach((player, index) => {
+    const folded = player.folded || player.busted;
+    if (!showAll && folded) {
+      return;
+    }
     const tile = document.createElement("div");
     tile.className = "player-tile";
-    if (player.id === currentId) tile.classList.add("current");
-    if (player.folded || player.busted) tile.classList.add("folded");
+    if (!folded && player.id === currentId) tile.classList.add("current");
+    if (folded) tile.classList.add("folded");
     tile.dataset.order = index;
     const badges = [];
     if (state.roomState?.dealer_player_id === player.id) badges.push({ label: "D", cls: "dealer" });
@@ -370,7 +406,14 @@ function renderPlayers(players, currentId) {
         seat #${player.seat} · ${player.folded ? "已弃牌" : player.busted ? "出局" : player.all_in ? "ALL-IN" : "在局中"}
       </div>
       <div class="bet-chip">当前下注：${player.bet}</div>
-      <div class="cards">${renderCardList(player.cards, { padTo: 2 })}</div>
+      <div class="cards">
+        ${renderCardList(player.cards, { padTo: 2 })}
+        ${
+          folded && showAll
+            ? '<span class="muted-text" style="display:block;margin-top:0.2rem;">已弃牌</span>'
+            : ""
+        }
+      </div>
     `;
     dom.playersGrid.appendChild(tile);
   });
@@ -380,7 +423,7 @@ function orderPlayers(players) {
   if (!Array.isArray(players)) return [];
   const dealerId = state.roomState?.dealer_player_id;
   if (!dealerId) {
-    return [...players].sort((a, b) => a.seat - b.seat);
+    return shuffle([...players]);
   }
   const seatOrder = [...players].sort((a, b) => a.seat - b.seat);
   const dealerIndex = seatOrder.findIndex((player) => player.id === dealerId);
@@ -390,6 +433,14 @@ function orderPlayers(players) {
     ordered.push(seatOrder[(dealerIndex + offset) % seatOrder.length]);
   }
   return ordered;
+}
+
+function shuffle(array) {
+  for (let i = array.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [array[i], array[j]] = [array[j], array[i]];
+  }
+  return array;
 }
 
 function renderActions(actions) {
