@@ -82,7 +82,7 @@ class Room:
         current_ai = len([p for p in self.players if p.is_ai])
         needed = self.ai_requested - current_ai
         for index in range(needed):
-            bot = self.add_player(name=f"DeepSeek Bot {current_ai + index + 1}", is_ai=True)
+            bot = self.add_player(name=f"Bot {current_ai + index + 1}", is_ai=True)
             bot.secret = ""
 
     def _active_indices(self) -> list[int]:
@@ -105,6 +105,8 @@ class Room:
     def start_hand(self, requesting_player: Player) -> None:
         if requesting_player.id != self.host_player_id:
             raise HTTPException(status_code=403, detail="Only the host can start a hand")
+        if self.game and not self.game.hand_over:
+            raise HTTPException(status_code=400, detail="当前牌局尚未结束，不能重新开局")
         self._spawn_ai_players()
         if len([p for p in self.players if p.stack > 0]) < 2:
             raise HTTPException(status_code=400, detail="Need at least two players with chips")
@@ -174,6 +176,10 @@ class Room:
             "winners": [],
             "current_player_id": None,
             "last_event": None,
+            "dealer_player_id": None,
+            "small_blind_player_id": None,
+            "big_blind_player_id": None,
+            "current_bet": 0,
         }
         reveal_all = bool(game and game.hand_over)
         for player in self.players:
@@ -193,6 +199,20 @@ class Room:
                     "winners": game.winners,
                     "current_player_id": game.current_player.id if game.current_player else None,
                     "last_event": game.last_event,
+                    "current_bet": game.current_bet,
+                    "dealer_player_id": (
+                        game.players[game.dealer_index].id if game.dealer_index is not None else None
+                    ),
+                    "small_blind_player_id": (
+                        game.players[game.small_blind_index].id
+                        if game.small_blind_index is not None
+                        else None
+                    ),
+                    "big_blind_player_id": (
+                        game.players[game.big_blind_index].id
+                        if game.big_blind_index is not None
+                        else None
+                    ),
                 }
             )
         if viewer and game:

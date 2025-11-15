@@ -143,6 +143,8 @@ class PokerHand:
         self.hand_over = False
         self.winners: list[dict] = []
         self.last_event: str | None = None
+        self.small_blind_index: int | None = None
+        self.big_blind_index: int | None = None
 
     def start(self) -> None:
         active_players = [p for p in self.players if p.stack > 0 and not p.busted]
@@ -167,6 +169,8 @@ class PokerHand:
         bb_index = self._next_active_index(sb_index)
         if sb_index is None or bb_index is None:
             raise ValueError("unable to post blinds")
+        self.small_blind_index = sb_index
+        self.big_blind_index = bb_index
         self._post_blind(sb_index, self.small_blind, "small_blind")
         self._post_blind(bb_index, self.big_blind, "big_blind")
         self.current_bet = max(player.bet for player in self.players)

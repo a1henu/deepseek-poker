@@ -16,15 +16,19 @@ const dom = {
   refreshLobbyBtn: document.getElementById("refresh-lobby-btn"),
   roomsList: document.getElementById("rooms-list"),
   tableRoom: document.getElementById("table-room-id"),
-  tablePhase: document.getElementById("table-phase"),
-  tablePot: document.getElementById("table-pot"),
+  tablePhase: document.getElementById("phase-label"),
+  potValue: document.getElementById("pot-value"),
   community: document.getElementById("community-cards"),
   tableEvent: document.getElementById("table-event"),
   currentPlayer: document.getElementById("current-player"),
-  selfInfo: document.getElementById("self-info"),
+  currentBet: document.getElementById("current-bet"),
+  heroName: document.getElementById("hero-name"),
+  heroStack: document.getElementById("hero-stack"),
+  heroCall: document.getElementById("hero-call"),
+  heroCards: document.getElementById("hero-cards"),
   actionButtons: document.getElementById("action-buttons"),
   betAmount: document.getElementById("bet-amount"),
-  playersList: document.getElementById("players-list"),
+  playersGrid: document.getElementById("players-grid"),
   actionLog: document.getElementById("action-log"),
 };
 
@@ -272,89 +276,132 @@ function renderState() {
   if (!st) {
     dom.tableRoom.textContent = "-";
     dom.tablePhase.textContent = "-";
-    dom.tablePot.textContent = "0";
-    dom.community.textContent = "-";
-    dom.tableEvent.textContent = "-";
+    dom.potValue.textContent = "0";
+    dom.currentBet.textContent = "0";
+    dom.community.innerHTML = placeholderCards(5);
+    dom.tableEvent.textContent = "等待加入房间...";
     dom.currentPlayer.textContent = "-";
-    dom.selfInfo.textContent = "无座位信息。";
+    dom.heroName.textContent = "未入座";
+    dom.heroStack.textContent = "-";
+    dom.heroCall.textContent = "-";
+    dom.heroCards.innerHTML = placeholderCards(2, { large: true });
     dom.actionButtons.innerHTML = "";
-    dom.playersList.innerHTML = "<p>没有玩家数据。</p>";
-    dom.actionLog.innerHTML = "";
+    dom.playersGrid.innerHTML = '<p class="muted-text">暂无玩家。</p>';
+    dom.actionLog.innerHTML = '<p class="muted-text">暂无行动记录。</p>';
     return;
   }
   dom.tableRoom.textContent = st.room_id;
   dom.tablePhase.textContent = st.phase;
-  dom.tablePot.textContent = st.pot;
-  dom.community.textContent = st.community_cards?.join(" ") || "-";
-  dom.tableEvent.textContent = st.last_event || "-";
-  dom.currentPlayer.textContent = st.current_player_id || "等待中";
-  renderSelfPanel(st);
-  renderPlayers(st.players || []);
+  dom.potValue.textContent = st.pot;
+  dom.currentBet.textContent = st.current_bet ?? 0;
+  dom.tableEvent.textContent = st.last_event || "等待玩家行动...";
+  const turnPlayer =
+    (st.players || []).find((player) => player.id === st.current_player_id) || null;
+  dom.currentPlayer.textContent = turnPlayer ? turnPlayer.name : st.current_player_id || "等待中";
+  renderBoard(st.community_cards || []);
+  renderHeroPanel(st);
+  renderPlayers(st.players || [], st.current_player_id);
   renderActions(st.actions || []);
 }
 
-function renderSelfPanel(st) {
-  if (!state.session || !st.self) {
-    dom.selfInfo.textContent = "请加入房间后查看自己的信息。";
+function renderHeroPanel(st) {
+  const hero =
+    (st.players || []).find((p) => state.session && p.id === state.session.playerId) || null;
+  if (!state.session || !st.self || !hero) {
+    dom.heroName.textContent = "请加入房间";
+    dom.heroStack.textContent = "-";
+    dom.heroCall.textContent = "-";
+    dom.heroCards.innerHTML = placeholderCards(2, { large: true });
     dom.actionButtons.innerHTML = "";
+    dom.betAmount.disabled = true;
     return;
   }
-  dom.selfInfo.innerHTML = `
-    <p>剩余筹码：<strong>${st.self.stack}</strong></p>
-    <p>待跟注：<strong>${st.self.to_call}</strong></p>
-    <p>可执行动作：${(st.self.legal_actions || []).join(", ") || "-"}</p>
-  `;
+  dom.heroName.textContent = `${hero.name}${hero.is_ai ? " (AI)" : ""}`;
+  dom.heroStack.textContent = st.self.stack;
+  dom.heroCall.textContent = st.self.to_call;
+  dom.heroCards.innerHTML = renderCardList(hero.cards, { large: true, padTo: 2 });
+  const myTurn = Boolean(st.current_player_id && st.current_player_id === hero.id);
+  dom.betAmount.disabled = !myTurn;
   dom.actionButtons.innerHTML = "";
   (st.self.legal_actions || []).forEach((action) => {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.textContent = action.toUpperCase();
+    btn.disabled = !myTurn;
     btn.addEventListener("click", () => sendAction(action));
     dom.actionButtons.appendChild(btn);
   });
 }
 
-function renderPlayers(players) {
+function renderBoard(cards) {
+  dom.community.innerHTML = renderCardList(cards, { padTo: 5 });
+}
+
+function renderPlayers(players, currentId) {
+  if (!dom.playersGrid) return;
   if (!players.length) {
-    dom.playersList.innerHTML = "<p>等待玩家加入...</p>";
+    dom.playersGrid.innerHTML = '<p class="muted-text">等待玩家加入...</p>';
     return;
   }
-  dom.playersList.innerHTML = "";
-  players.forEach((player) => {
-    const el = document.createElement("div");
-    el.className = "player-card";
-    el.innerHTML = `
-      <div><strong>${player.name}</strong> ${player.is_ai ? "<span class='meta'>AI</span>" : ""}</div>
-      <div class="chips">${player.stack} 芯片</div>
+  const sorted = orderPlayers(players);
+  dom.playersGrid.innerHTML = "";
+  sorted.forEach((player, index) => {
+    const tile = document.createElement("div");
+    tile.className = "player-tile";
+    if (player.id === currentId) tile.classList.add("current");
+    if (player.folded || player.busted) tile.classList.add("folded");
+    tile.dataset.order = index;
+    const badges = [];
+    if (state.roomState?.dealer_player_id === player.id) badges.push({ label: "D", cls: "dealer" });
+    if (state.roomState?.small_blind_player_id === player.id) badges.push({ label: "SB", cls: "blind" });
+    if (state.roomState?.big_blind_player_id === player.id) badges.push({ label: "BB", cls: "blind" });
+    const badgeHtml = badges.length
+      ? `<div class="badges">${badges
+          .map((badge) => `<span class="badge ${badge.cls}">${badge.label}</span>`)
+          .join("")}</div>`
+      : "";
+    tile.innerHTML = `
+      <header>
+        <span>${player.name}${player.is_ai ? " (AI)" : ""}</span>
+        <span class="stack">${player.stack}</span>
+      </header>
+      ${badgeHtml}
       <div class="meta">
-        seat #${player.seat} · ${player.folded ? "已弃牌" : "在局中"}${player.all_in ? " · ALL-IN" : ""}${player.busted ? " · 出局" : ""}
+        seat #${player.seat} · ${player.folded ? "已弃牌" : player.busted ? "出局" : player.all_in ? "ALL-IN" : "在局中"}
       </div>
-      <div class="meta">当前下注：${player.bet}</div>
-      <div class="cards">${renderCards(player.cards)}</div>
+      <div class="bet-chip">当前下注：${player.bet}</div>
+      <div class="cards">${renderCardList(player.cards, { padTo: 2 })}</div>
     `;
-    dom.playersList.appendChild(el);
+    dom.playersGrid.appendChild(tile);
   });
 }
 
-function renderCards(cards) {
-  if (!cards) return "<span class='card'>?</span>";
-  if (Array.isArray(cards)) {
-    if (!cards.length) return "<span class='card'>无</span>";
-    return cards.map((c) => `<span class="card">${c}</span>`).join("");
+function orderPlayers(players) {
+  if (!Array.isArray(players)) return [];
+  const dealerId = state.roomState?.dealer_player_id;
+  if (!dealerId) {
+    return [...players].sort((a, b) => a.seat - b.seat);
   }
-  return `<span class="card">${cards} 张</span>`;
+  const seatOrder = [...players].sort((a, b) => a.seat - b.seat);
+  const dealerIndex = seatOrder.findIndex((player) => player.id === dealerId);
+  if (dealerIndex === -1) return seatOrder;
+  const ordered = [];
+  for (let offset = 1; offset <= seatOrder.length; offset += 1) {
+    ordered.push(seatOrder[(dealerIndex + offset) % seatOrder.length]);
+  }
+  return ordered;
 }
 
 function renderActions(actions) {
   if (!actions.length) {
-    dom.actionLog.innerHTML = "<p>暂无行动记录。</p>";
+    dom.actionLog.innerHTML = '<p class="muted-text">暂无行动记录。</p>';
     return;
   }
   dom.actionLog.innerHTML = "";
   actions.slice(-40).forEach((entry) => {
     const el = document.createElement("div");
     el.className = "action-entry";
-    el.textContent = `[${entry.phase}] ${entry.player_name}: ${entry.action} ${entry.amount || ""}`;
+    el.innerHTML = `<strong>${entry.player_name}</strong> @ ${entry.phase} → ${entry.action.toUpperCase()} ${entry.amount || ""}`;
     dom.actionLog.appendChild(el);
   });
 }
@@ -377,5 +424,60 @@ function renderLobby() {
   });
 }
 
-init();
+const SUIT_SYMBOL = { S: "♠", H: "♥", D: "♦", C: "♣" };
+const RANK_MAP = { T: "10" };
 
+function renderCardList(data, options = {}) {
+  const { padTo = 0, large = false } = options;
+  let count = 0;
+  let markup = "";
+  if (Array.isArray(data)) {
+    count = data.length;
+    markup = data
+      .map((label) => createCard(label, { large }))
+      .join("");
+  } else if (typeof data === "number") {
+    count = data;
+    markup = placeholderCards(data, { large });
+  } else if (typeof data === "string" && data) {
+    count = 1;
+    markup = createCard(data, { large });
+  }
+  const diff = Math.max(0, padTo - count);
+  if (diff > 0) {
+    markup += placeholderCards(diff, { large });
+  }
+  if (!markup) {
+    markup = placeholderCards(padTo || 1, { large });
+  }
+  return markup;
+}
+
+function placeholderCards(count, { large = false } = {}) {
+  return Array.from({ length: count }, () => createCard(null, { hidden: true, large })).join("");
+}
+
+function createCard(label, { hidden = false, large = false } = {}) {
+  let rank = "";
+  let suit = "";
+  if (!label) hidden = true;
+  if (!hidden) {
+    rank = label.slice(0, -1).toUpperCase();
+    suit = label.slice(-1).toUpperCase();
+    if (!rank) {
+      hidden = true;
+    }
+  }
+  const classes = ["poker-card"];
+  if (large) classes.push("large");
+  if (hidden) {
+    classes.push("back");
+    return `<div class="${classes.join(" ")}"></div>`;
+  }
+  if (suit === "H" || suit === "D") classes.push("red");
+  const suitSymbol = SUIT_SYMBOL[suit] || "•";
+  const rankSymbol = RANK_MAP[rank] || rank;
+  return `<div class="${classes.join(" ")}"><div class="rank">${rankSymbol}</div><div class="suit">${suitSymbol}</div></div>`;
+}
+
+init();

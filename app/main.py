@@ -41,7 +41,7 @@ async def health_check() -> dict:
 
 
 @app.get("/", include_in_schema=False)
-async def frontpage() -> FileResponse | dict:
+async def frontpage():
     if WEB_DIR.exists():
         return FileResponse(WEB_DIR / "index.html")
     return {"message": "DeepSeek Poker API"}
