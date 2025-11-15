@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="zh">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DeepSeek Poker</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header>
+        <div>
+          <h1>DeepSeek Poker</h1>
+          <p>创建房间、邀请好友，并与 DeepSeek AI 一起玩德州扑克。</p>
+        </div>
+        <div class="status-badge" id="status-text">后端未连接</div>
+      </header>
+
+      <section class="panel">
+        <div>
+          <h2>当前身份</h2>
+          <div id="session-info" class="session-info">
+            <p>尚未连接到任何房间。</p>
+          </div>
+        </div>
+        <div class="actions-row">
+          <button id="start-hand-btn" disabled>开始新一手牌 (房主)</button>
+          <button id="refresh-state-btn" disabled>刷新状态</button>
+          <button id="leave-room-btn" disabled class="danger">退出并清除本机凭证</button>
+        </div>
+      </section>
+
+      <section class="panel two-column">
+        <div>
+          <h2>创建房间</h2>
+          <form id="create-room-form">
+            <label>
+              房主名称
+              <input type="text" name="host_name" required maxlength="32" />
+            </label>
+            <label>
+              房间总人数 (2-9)
+              <input type="number" name="total_seats" min="2" max="9" value="6" />
+            </label>
+            <label>
+              AI 数量
+              <input type="number" name="ai_players" min="0" value="2" />
+            </label>
+            <label>
+              初始筹码
+              <input type="number" name="starting_stack" min="100" value="2000" />
+            </label>
+            <div class="grid-2">
+              <label>
+                Small Blind
+                <input type="number" name="small_blind" min="1" value="10" />
+              </label>
+              <label>
+                Big Blind
+                <input type="number" name="big_blind" min="2" value="20" />
+              </label>
+            </div>
+            <button type="submit">创建房间</button>
+          </form>
+        </div>
+
+        <div>
+          <h2>加入房间</h2>
+          <form id="join-room-form">
+            <label>
+              房间 ID
+              <input type="text" name="room_id" required maxlength="6" />
+            </label>
+            <label>
+              玩家名称
+              <input type="text" name="player_name" required maxlength="32" />
+            </label>
+            <button type="submit">加入房间</button>
+          </form>
+
+          <div class="lobby">
+            <div class="lobby-header">
+              <h3>当前房间</h3>
+              <button id="refresh-lobby-btn" type="button">刷新列表</button>
+            </div>
+            <div id="rooms-list" class="rooms-list"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel table-state">
+        <h2>牌桌状态</h2>
+        <div class="table-grid">
+          <div>
+            <strong>房间:</strong> <span id="table-room-id">-</span>
+          </div>
+          <div>
+            <strong>阶段:</strong> <span id="table-phase">-</span>
+          </div>
+          <div>
+            <strong>彩池:</strong> <span id="table-pot">0</span>
+          </div>
+          <div>
+            <strong>普牌:</strong> <span id="community-cards">-</span>
+          </div>
+          <div>
+            <strong>牌桌事件:</strong> <span id="table-event">-</span>
+          </div>
+          <div>
+            <strong>轮到:</strong> <span id="current-player">-</span>
+          </div>
+        </div>
+
+        <div class="self-panel" id="self-panel">
+          <h3>我的状态</h3>
+          <div id="self-info">未加入任何房间。</div>
+          <div class="action-controls">
+            <div class="actions" id="action-buttons"></div>
+            <label>
+              加注至 / 下注额
+              <input type="number" id="bet-amount" min="0" step="10" />
+            </label>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>玩家</h2>
+        <div id="players-list" class="players-list"></div>
+      </section>
+
+      <section class="panel">
+        <h2>行动记录</h2>
+        <div id="action-log" class="action-log"></div>
+      </section>
+    </div>
+
+    <script type="module" src="/assets/main.js"></script>
+  </body>
+</html>
+
